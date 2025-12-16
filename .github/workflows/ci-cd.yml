@@ -10,7 +10,7 @@ env:
   NODE_VERSION: '18.x'
 
 jobs:
-  # JOB 1
+  # JOb 1
   lint:
     name: Lint Code
     runs-on: ubuntu-latest
