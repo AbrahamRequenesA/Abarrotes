@@ -272,7 +272,7 @@ jobs:
           echo "Production deployment completed!"
     
     - name: Send Deployment Notification
-      uses: 8398a7/action-slack@v4
+      uses: 8398a7/action-slack@v3
       if: always()
       with:
         status: ${{ job.status }}
