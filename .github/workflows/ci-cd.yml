@@ -222,10 +222,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
     - name: Download Frontend Build
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: frontend-build
         path: Abarrotes_Web/frontend/build/
@@ -272,7 +272,7 @@ jobs:
           echo "Production deployment completed!"
     
     - name: Send Deployment Notification
-      uses: 8398a7/action-slack@v3
+      uses: 8398a7/action-slack@v4
       if: always()
       with:
         status: ${{ job.status }}
