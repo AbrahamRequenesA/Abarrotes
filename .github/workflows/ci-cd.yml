@@ -48,7 +48,7 @@ jobs:
         cd Abarrotes_Web/frontend
         npm run lint || echo "No lint script configured"
 
-  # JOB 2
+  # JOB 2 
   test-backend:
     name: Test Backend
     runs-on: ubuntu-latest
