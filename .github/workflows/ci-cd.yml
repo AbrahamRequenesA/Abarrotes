@@ -235,7 +235,6 @@ jobs:
         tar -czf deployment-${{ github.sha }}.tar.gz \
           Abarrotes_Web/backend/ \
           Abarrotes_Web/frontend/build/ \
-          database.sql \
           --exclude=Abarrotes_Web/backend/node_modules \
           --exclude=Abarrotes_Web/frontend/node_modules
     
@@ -277,7 +276,6 @@ jobs:
       with:
         status: ${{ job.status }}
         text: 'Deployment to Production: ${{ job.status }}'
-        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
 
