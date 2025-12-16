@@ -25,27 +25,27 @@ jobs:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
         cache-dependency-path: |
-          backend/package-lock.json
-          frontend/package-lock.json
+          Abarrotes_Web/backend/package-lock.json
+          Abarrotes_Web/frontend/package-lock.json
     
     - name: Install Backend Dependencies
       run: |
-        cd backend
+        cd Abarrotes_Web/backend
         npm ci
     
     - name: Install Frontend Dependencies
       run: |
-        cd frontend
+        cd Abarrotes_Web/frontend
         npm ci
     
     - name: Lint Backend
       run: |
-        cd backend
+        cd Abarrotes_Web/backend
         npm run lint || echo "No lint script configured"
     
     - name: Lint Frontend
       run: |
-        cd frontend
+        cd Abarrotes_Web/frontend
         npm run lint || echo "No lint script configured"
 
   # JOB 2
@@ -77,11 +77,11 @@ jobs:
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
-        cache-dependency-path: backend/package-lock.json
+        cache-dependency-path: Abarrotes_Web/backend/package-lock.json
     
     - name: Install Dependencies
       run: |
-        cd backend
+        cd Abarrotes_Web/backend
         npm ci
     
     - name: Wait for MySQL
@@ -103,7 +103,7 @@ jobs:
         DB_NAME: abarrotes_test
         NODE_ENV: test
       run: |
-        cd backend
+        cd Abarrotes_Web/backend
         npm test || echo "No tests configured yet"
 
   # JOB 3
@@ -121,25 +121,25 @@ jobs:
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
+        cache-dependency-path: Abarrotes_Web/frontend/package-lock.json
     
     - name: Install Dependencies
       run: |
-        cd frontend
+        cd Abarrotes_Web/frontend
         npm ci
     
     - name: Build Frontend
       env:
         REACT_APP_API_URL: ${{ secrets.API_URL || 'http://localhost:5000/api' }}
       run: |
-        cd frontend
+        cd Abarrotes_Web/frontend
         npm run build
     
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v3
       with:
         name: frontend-build
-        path: frontend/build/
+        path: Abarrotes_Web/frontend/build/
         retention-days: 7
 
   # JOB 4
@@ -159,12 +159,12 @@ jobs:
     
     - name: Run NPM Audit - Backend
       run: |
-        cd backend
+        cd Abarrotes_Web/backend
         npm audit --production --audit-level=high || true
     
     - name: Run NPM Audit - Frontend
       run: |
-        cd frontend
+        cd Abarrotes_Web/frontend
         npm audit --production --audit-level=high || true
 
   # JOB 5
@@ -185,7 +185,7 @@ jobs:
       uses: actions/download-artifact@v3
       with:
         name: frontend-build
-        path: frontend/build/
+        path: Abarrotes_Web/frontend/build/
     
     - name: Deploy to Staging Server
       uses: appleboy/ssh-action@master
@@ -198,7 +198,7 @@ jobs:
           git pull origin develop
           
           # Backend
-          cd backend
+          cd Abarrotes_Web/backend
           npm install --production
           pm2 restart abarrotes-backend-staging || pm2 start server.js --name abarrotes-backend-staging
           
@@ -227,16 +227,16 @@ jobs:
       uses: actions/download-artifact@v3
       with:
         name: frontend-build
-        path: frontend/build/
+        path: Abarrotes_Web/frontend/build/
     
     - name: Create Deployment Package
       run: |
         tar -czf deployment-${{ github.sha }}.tar.gz \
-          backend/ \
-          frontend/build/ \
+          Abarrotes_Web/backend/ \
+          Abarrotes_Web/frontend/build/ \
           database.sql \
-          --exclude=backend/node_modules \
-          --exclude=frontend/node_modules
+          --exclude=Abarrotes_Web/backend/node_modules \
+          --exclude=Abarrotes_Web/frontend/node_modules
     
     - name: Deploy to Production Server
       uses: appleboy/ssh-action@master
@@ -249,13 +249,13 @@ jobs:
           
           # Backup actual
           timestamp=$(date +%Y%m%d_%H%M%S)
-          tar -czf backup_${timestamp}.tar.gz backend/ frontend/build/ || true
+          tar -czf backup_${timestamp}.tar.gz Abarrotes_Web/backend/ Abarrotes_Web/frontend/build/ || true
           
           # Pull nuevo código
           git pull origin main
           
           # Backend
-          cd backend
+          cd Abarrotes_Web/backend
           npm install --production
           pm2 restart abarrotes-backend || pm2 start server.js --name abarrotes-backend
           
@@ -302,7 +302,7 @@ jobs:
           latest_backup=$(ls -t backup_*.tar.gz | head -1)
           if [ -n "$latest_backup" ]; then
             tar -xzf $latest_backup
-            cd backend
+            cd Abarrotes_Web/backend
             pm2 restart abarrotes-backend
             echo "Rollback completed to: $latest_backup"
           else
