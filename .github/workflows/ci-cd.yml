@@ -130,6 +130,7 @@ jobs:
     
     - name: Build Frontend
       env:
+        CI: false
         REACT_APP_API_URL: ${{ secrets.API_URL || 'http://localhost:5000/api' }}
       run: |
         cd Abarrotes_Web/frontend
