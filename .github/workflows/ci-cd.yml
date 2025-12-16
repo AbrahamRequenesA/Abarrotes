@@ -233,10 +233,10 @@ jobs:
     - name: Create Deployment Package
       run: |
         tar -czf deployment-${{ github.sha }}.tar.gz \
-          Abarrotes_Web/backend/ \
-          Abarrotes_Web/frontend/build/ \
           --exclude=Abarrotes_Web/backend/node_modules \
-          --exclude=Abarrotes_Web/frontend/node_modules
+          --exclude=Abarrotes_Web/frontend/node_modules \
+          Abarrotes_Web/backend/ \
+          Abarrotes_Web/frontend/build/ 
     
     - name: Deploy to Production Server
       uses: appleboy/ssh-action@master
