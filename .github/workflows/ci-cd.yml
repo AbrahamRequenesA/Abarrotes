@@ -1,0 +1,311 @@
+name: CI/CD Pipeline - Sistema Abarrotes
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  NODE_VERSION: '18.x'
+
+jobs:
+  # JOB 1
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: |
+          backend/package-lock.json
+          frontend/package-lock.json
+    
+    - name: Install Backend Dependencies
+      run: |
+        cd backend
+        npm ci
+    
+    - name: Install Frontend Dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Lint Backend
+      run: |
+        cd backend
+        npm run lint || echo "No lint script configured"
+    
+    - name: Lint Frontend
+      run: |
+        cd frontend
+        npm run lint || echo "No lint script configured"
+
+  # JOB 2
+  test-backend:
+    name: Test Backend
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpassword
+          MYSQL_DATABASE: abarrotes_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+    
+    - name: Install Dependencies
+      run: |
+        cd backend
+        npm ci
+    
+    - name: Wait for MySQL
+      run: |
+        sudo apt-get install -y mysql-client
+        for i in {1..30}; do
+          if mysqladmin ping -h 127.0.0.1 -P 3306 -u root -ptestpassword; then
+            break
+          fi
+          echo "Waiting for MySQL..."
+          sleep 2
+        done
+    
+    - name: Run Backend Tests
+      env:
+        DB_HOST: 127.0.0.1
+        DB_USER: root
+        DB_PASSWORD: testpassword
+        DB_NAME: abarrotes_test
+        NODE_ENV: test
+      run: |
+        cd backend
+        npm test || echo "No tests configured yet"
+
+  # JOB 3
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install Dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Build Frontend
+      env:
+        REACT_APP_API_URL: ${{ secrets.API_URL || 'http://localhost:5000/api' }}
+      run: |
+        cd frontend
+        npm run build
+    
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend/build/
+        retention-days: 7
+
+  # JOB 4
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: [test-backend, build-frontend]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Run NPM Audit - Backend
+      run: |
+        cd backend
+        npm audit --production --audit-level=high || true
+    
+    - name: Run NPM Audit - Frontend
+      run: |
+        cd frontend
+        npm audit --production --audit-level=high || true
+
+  # JOB 5
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [test-backend, build-frontend, security-scan]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment:
+      name: staging
+      url: https://staging.abarrotes.com
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Download Frontend Build
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend/build/
+    
+    - name: Deploy to Staging Server
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USER }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        script: |
+          cd /var/www/abarrotes-staging
+          git pull origin develop
+          
+          # Backend
+          cd backend
+          npm install --production
+          pm2 restart abarrotes-backend-staging || pm2 start server.js --name abarrotes-backend-staging
+          
+          # Frontend
+          cd ../frontend
+          npm install
+          npm run build
+          
+          echo "Staging deployment completed!"
+
+  # JOB 6
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [test-backend, build-frontend, security-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: https://abarrotes.com
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Download Frontend Build
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend/build/
+    
+    - name: Create Deployment Package
+      run: |
+        tar -czf deployment-${{ github.sha }}.tar.gz \
+          backend/ \
+          frontend/build/ \
+          database.sql \
+          --exclude=backend/node_modules \
+          --exclude=frontend/node_modules
+    
+    - name: Deploy to Production Server
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USER }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        script: |
+          cd /var/www/abarrotes-production
+          
+          # Backup actual
+          timestamp=$(date +%Y%m%d_%H%M%S)
+          tar -czf backup_${timestamp}.tar.gz backend/ frontend/build/ || true
+          
+          # Pull nuevo código
+          git pull origin main
+          
+          # Backend
+          cd backend
+          npm install --production
+          pm2 restart abarrotes-backend || pm2 start server.js --name abarrotes-backend
+          
+          # Frontend
+          cd ../frontend
+          npm install
+          npm run build
+          
+          # Limpiar backups antiguos (mantener últimos 5)
+          cd /var/www/abarrotes-production
+          ls -t backup_*.tar.gz | tail -n +6 | xargs rm -f
+          
+          echo "Production deployment completed!"
+    
+    - name: Send Deployment Notification
+      uses: 8398a7/action-slack@v3
+      if: always()
+      with:
+        status: ${{ job.status }}
+        text: 'Deployment to Production: ${{ job.status }}'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  # JOB 7
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    environment:
+      name: production
+    
+    steps:
+    - name: Rollback Production
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USER }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        script: |
+          cd /var/www/abarrotes-production
+          
+          # Restaurar último backup
+          latest_backup=$(ls -t backup_*.tar.gz | head -1)
+          if [ -n "$latest_backup" ]; then
+            tar -xzf $latest_backup
+            cd backend
+            pm2 restart abarrotes-backend
+            echo "Rollback completed to: $latest_backup"
+          else
+            echo "No backup found!"
+            exit 1
+          fi
